@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Checkout builder repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install build dependencies
         run: |
