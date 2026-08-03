@@ -13,19 +13,6 @@ index 966fb653..c27aa690 100644
 +# CONFIG_KSU_KPROBES_HOOK is not set
 +CONFIG_KPROBES=y
 +CONFIG_KPROBE_EVENTS=y
-diff --git a/arch/arm64/configs/lineageos_joan_defconfig b/arch/arm64/configs/lineageos_joan_defconfig
-index c27aa690..d27aa691 100644
---- a/arch/arm64/configs/lineageos_joan_defconfig
-+++ b/arch/arm64/configs/lineageos_joan_defconfig
-@@ -81,7 +81,7 @@ CONFIG_SCHED_MC=y
- # CONFIG_COMPAT_BRK is not set
- CONFIG_HARDENED_USERCOPY=y
- CONFIG_COMPAT=y
--CONFIG_COMPAT_VDSO=y
-+# CONFIG_COMPAT_VDSO is not set
- CONFIG_CROSS_COMPILE="aarch64-linux-gnu-"
- CONFIG_ARM64_SSBD=y
- CONFIG_DEFAULT_MMAP_MIN_ADDR=32768
 diff --git a/drivers/staging/qca-wifi-host-cmn/hif/src/ce/ce_main.c b/drivers/staging/qca-wifi-host-cmn/hif/src/ce/ce_main.c
 index 2f7bdecf..42b01567 100644
 --- a/drivers/staging/qca-wifi-host-cmn/hif/src/ce/ce_main.c
