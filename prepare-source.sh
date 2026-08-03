@@ -37,6 +37,13 @@ echo "[+] Integrating KernelSU Next (${KSU_REF})"
   curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s "${KSU_REF}"
 )
 
+# KernelSU-Next uses ALIGN_DOWN(), which is unavailable in this Linux 4.4
+# tree. Keep the equivalent 8-byte alignment local to adb_root.c.
+sed -i \
+  -e 's/ALIGN_DOWN(stackp - sizeof(kLdPreload), 8)/(stackp - sizeof(kLdPreload)) \\& ~7UL/' \
+  -e 's/ALIGN_DOWN(stackp - sizeof(kLdLibraryPath), 8)/(stackp - sizeof(kLdLibraryPath)) \\& ~7UL/' \
+  "${KERNEL_DIR}/drivers/kernelsu/feature/adb_root.c"
+
 echo "[+] Applying local post-KernelSU Next patches"
 patch -d "${KERNEL_DIR}" -p1 < "${ROOT}/patches/post-kernelsu.diff"
 patch -d "${KERNEL_DIR}" -p1 < "${ROOT}/patches/manual-hooks-linux-4.4.diff"
