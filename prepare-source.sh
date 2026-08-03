@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
+# Prepare a clean LineageOS 22.2 joan kernel tree with KernelSU-Next legacy.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-KERNEL_DIR="${ROOT}/kernel"
+KERNEL_DIR="${KERNEL_DIR:-${ROOT}/kernel}"
 KERNEL_REPO="${KERNEL_REPO:-https://github.com/LineageOS/android_kernel_lge_msm8998.git}"
 KERNEL_BRANCH="${KERNEL_BRANCH:-lineage-22.2}"
-# KernelSU Next tag/branch for non-GKI 4.4.x (see kernelsu-next installation docs)
 KSU_REF="${KSU_REF:-legacy}"
 
 if [[ -e "${KERNEL_DIR}" ]]; then
@@ -13,39 +13,53 @@ if [[ -e "${KERNEL_DIR}" ]]; then
   exit 1
 fi
 
-echo "[+] Cloning ${KERNEL_REPO} (${KERNEL_BRANCH})"
-# The LineageOS kernel repository is large; HTTP/1.1 plus retries avoids
-# transient HTTP/2 sideband disconnects on GitHub-hosted runners.
+# Avoid mutating the user's global Git configuration.
+git_config="$(mktemp)"
+trap 'rm -f "${git_config}"' EXIT
+export GIT_CONFIG_GLOBAL="${git_config}"
 git config --global http.version HTTP/1.1
 git config --global http.postBuffer 524288000
+
 for attempt in 1 2 3; do
-  if git clone --depth 1 --single-branch -b "${KERNEL_BRANCH}" "${KERNEL_REPO}" "${KERNEL_DIR}"; then
+  echo "[+] Cloning ${KERNEL_REPO} (${KERNEL_BRANCH}), attempt ${attempt}/3"
+  if git clone --depth 1 --single-branch -b "${KERNEL_BRANCH}" \
+      "${KERNEL_REPO}" "${KERNEL_DIR}"; then
     break
   fi
   rm -rf "${KERNEL_DIR}"
-  if [[ "${attempt}" -eq 3 ]]; then
-    echo "Kernel clone failed after ${attempt} attempts" >&2
-    exit 1
-  fi
-  echo "[!] Kernel clone failed; retrying (${attempt}/3)" >&2
+  [[ "${attempt}" -lt 3 ]] || { echo 'Kernel source clone failed.' >&2; exit 1; }
   sleep 5
 done
 
-echo "[+] Integrating KernelSU Next (${KSU_REF})"
+echo "[+] Integrating KernelSU-Next (${KSU_REF})"
 (
   cd "${KERNEL_DIR}"
-  curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s "${KSU_REF}"
+  curl --fail --location --silent --show-error \
+    https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh \
+    | bash -s "${KSU_REF}"
 )
 
-# KernelSU-Next uses ALIGN_DOWN(), which is unavailable in this Linux 4.4
-# tree. Keep the equivalent 8-byte alignment local to adb_root.c.
-sed -i \
-  -e 's@ALIGN_DOWN(stackp - sizeof(kLdPreload), 8)@((stackp - sizeof(kLdPreload)) \& ~7UL)@' \
-  -e 's@ALIGN_DOWN(stackp - sizeof(kLdLibraryPath), 8)@((stackp - sizeof(kLdLibraryPath)) \& ~7UL)@' \
-  "${KERNEL_DIR}/drivers/kernelsu/feature/adb_root.c"
+# This Linux 4.4 tree lacks __nocfi; it has no CFI instrumentation, so the
+# annotation can be safely dropped for the legacy build.
+sed -i 's/static int __nocfi my_sel_open_handle_status/static int my_sel_open_handle_status/' \
+  "${KERNEL_DIR}/drivers/kernelsu/feature/selinux_hide.c"
 
-echo "[+] Applying local post-KernelSU Next patches"
-patch -d "${KERNEL_DIR}" -p1 < "${ROOT}/patches/post-kernelsu.diff"
-patch -d "${KERNEL_DIR}" -p1 < "${ROOT}/patches/manual-hooks-linux-4.4.diff"
+echo "[+] Applying project patches"
+patch --batch --fuzz=0 -d "${KERNEL_DIR}" -p1 < "${ROOT}/patches/post-kernelsu.diff"
+patch --batch --fuzz=0 -d "${KERNEL_DIR}" -p1 < "${ROOT}/patches/manual-hooks-linux-4.4.diff"
+
+# The resolved ref is the actual KernelSU revision used by this build.
+printf '[+] KernelSU-Next resolved commit: '
+git -C "${KERNEL_DIR}/KernelSU-Next" rev-parse HEAD
+
+# Verify that the strict manual integration—not tracepoint/kprobe mode—is present.
+for hook in ksu_handle_execveat ksu_handle_faccessat ksu_handle_vfs_read \
+            ksu_handle_stat ksu_handle_newfstat_ret ksu_handle_fstat64_ret \
+            ksu_handle_setresuid ksu_handle_sys_reboot; do
+  grep -Rqs "${hook}" "${KERNEL_DIR}/fs" "${KERNEL_DIR}/kernel" || {
+    echo "Missing manual hook: ${hook}" >&2
+    exit 1
+  }
+done
 
 echo "[+] Source prepared in ${KERNEL_DIR}"
