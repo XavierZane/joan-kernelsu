@@ -301,7 +301,7 @@ diff --git a/security/selinux/include/objsec.h b/security/selinux/include/objsec
 index 5f7c8e2f..9c1f43a1 100644
 --- a/security/selinux/include/objsec.h
 +++ b/security/selinux/include/objsec.h
-@@ -135,4 +135,16 @@ struct bpf_security_struct {
+@@ -135,4 +135,14 @@ struct bpf_security_struct {
  
  extern unsigned int selinux_checkreqprot;
  
