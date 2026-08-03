@@ -1,0 +1,75 @@
+name: Build LG V30 KernelSU Next
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'boot.img'
+      - 'build-kernel.sh'
+      - 'prepare-source.sh'
+      - 'repack-boot.sh'
+      - 'patches/**'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout builder repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison flex libssl-dev libelf-dev \
+            clang llvm lld \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi \
+            cpio curl git make python3 unzip
+
+      - name: Validate stock boot image
+        run: |
+          test -f boot.img
+          file boot.img
+          sha256sum boot.img
+          test "$(stat -c '%s' boot.img)" -gt 1000000
+
+      - name: Prepare kernel source and latest KernelSU-Next legacy
+        env:
+          KSU_REF: legacy
+        run: ./prepare-source.sh
+
+      - name: Build Image.gz-dtb
+        env:
+          CROSS_COMPILE: aarch64-linux-gnu-
+          CROSS_COMPILE_ARM32: arm-linux-gnueabi-
+          CLANG_TRIPLE: aarch64-linux-gnu-
+          CC: clang
+          REAL_CC: clang
+        run: ./build-kernel.sh
+
+      - name: Repack boot image
+        run: ./repack-boot.sh
+
+      - name: Verify outputs
+        run: |
+          test -s kernel/out/arch/arm64/boot/Image.gz-dtb
+          test -s kernelsu-next-boot.img
+          sha256sum kernel/out/arch/arm64/boot/Image.gz-dtb kernelsu-next-boot.img
+          file kernelsu-next-boot.img
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: joan-kernelsu-next-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            kernel/out/arch/arm64/boot/Image.gz-dtb
+            kernelsu-next-boot.img
+            work/boot-repack/mkbootimg_args
