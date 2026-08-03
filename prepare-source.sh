@@ -14,7 +14,22 @@ if [[ -e "${KERNEL_DIR}" ]]; then
 fi
 
 echo "[+] Cloning ${KERNEL_REPO} (${KERNEL_BRANCH})"
-git clone --depth 1 -b "${KERNEL_BRANCH}" "${KERNEL_REPO}" "${KERNEL_DIR}"
+# The LineageOS kernel repository is large; HTTP/1.1 plus retries avoids
+# transient HTTP/2 sideband disconnects on GitHub-hosted runners.
+git config --global http.version HTTP/1.1
+git config --global http.postBuffer 524288000
+for attempt in 1 2 3; do
+  if git clone --depth 1 --single-branch -b "${KERNEL_BRANCH}" "${KERNEL_REPO}" "${KERNEL_DIR}"; then
+    break
+  fi
+  rm -rf "${KERNEL_DIR}"
+  if [[ "${attempt}" -eq 3 ]]; then
+    echo "Kernel clone failed after ${attempt} attempts" >&2
+    exit 1
+  fi
+  echo "[!] Kernel clone failed; retrying (${attempt}/3)" >&2
+  sleep 5
+done
 
 echo "[+] Integrating KernelSU Next (${KSU_REF})"
 (
